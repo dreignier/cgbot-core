@@ -320,7 +320,7 @@ class Bot {
         cout << result[1];
 
         for (unsigned int i = 2; i < result.size(); ++i) {
-          cout << " " << result[i];
+          cout << " " << (result[i] == NICK ? nickname : result[i]);
         }
 
         cout << endl;
