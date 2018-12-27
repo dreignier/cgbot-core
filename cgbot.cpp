@@ -16,6 +16,7 @@ using namespace std;
 #define MODE_IGNORE_END 1
 #define MODE_FORCE_END 2
 
+constexpr unsigned int MINIMUM_OCCURENCE = 2;
 constexpr unsigned int MARKOV_LENGTH = 2;
 constexpr unsigned int MINIMUM_LENGTH = 5;
 constexpr unsigned int SOFT_MAXIMUM_LENGTH = 20;
@@ -189,6 +190,38 @@ class Bot {
       end = find(vec);
     }
 
+    void clean() {
+      bool found = false;
+
+      do {
+        for (auto it = data.begin(); it != data.end();) {
+          if (it->second.total < MINIMUM_OCCURENCE) {
+            it = data.erase(it);
+          } else {
+            ++it;
+          }
+        }
+
+        for (auto& pair : data) {
+          for (auto it = pair.second.nexts.begin(); it != pair.second.nexts.end();) {
+            if (data.find((*it).ptr->first) == data.end()) {
+              pair.second.total -= (*it).score;
+
+              if (pair.second.total < MINIMUM_OCCURENCE) {
+                found = true;
+              }
+
+              it = pair.second.nexts.erase(it);
+            } else {
+              ++it;
+            }
+          }
+        }
+      } while (found);
+
+      data.rehash(0);
+    }
+
     inline pair<const vector<string>, Node>* find(vector<string>& key) {
       data[key];
       return &(*data.find(key));
@@ -324,6 +357,8 @@ int main(int argc ,char **argv) {
         bot.enabled = true;
       } else if (body == "DISABLE") {
         bot.enabled = false;
+      } else if (body == "CLEAN") {
+        bot.clean();
       } else if (body == "STOP") {
         break;
       }
