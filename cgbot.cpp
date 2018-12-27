@@ -18,7 +18,8 @@ using namespace std;
 
 constexpr unsigned int MINIMUM_OCCURENCE = 2;
 constexpr unsigned int MARKOV_LENGTH = 2;
-constexpr unsigned int MINIMUM_LENGTH = 5;
+constexpr unsigned int SOFT_MINIMUM_LENGTH = 5;
+constexpr unsigned int HARD_MINIMUM_LENGTH = 2;
 constexpr unsigned int SOFT_MAXIMUM_LENGTH = 20;
 constexpr unsigned int HARD_MAXIMUM_LENGTH = 30;
 
@@ -287,8 +288,8 @@ class Bot {
       learn(history, end);
     }
 
-    void talk() {
-      vector<string> result = { START };
+    void talk(vector<string>& result) {
+      result = { START };
 
       pair<const vector<string>, Node>* next = start->second.randomNext<MODE_IGNORE_END>(end);
 
@@ -314,16 +315,6 @@ class Bot {
         }
 
         concat(result, next->first);
-      }
-
-      if (result.size() > 1) {
-        cout << result[1];
-
-        for (unsigned int i = 2; i < result.size(); ++i) {
-          cout << " " << (result[i] == NICK ? nickname : result[i]);
-        }
-
-        cout << endl;
       }
     }
 };
@@ -366,7 +357,19 @@ int main(int argc ,char **argv) {
       bot.learn(body);
 
       if (bot.enabled && search(body.begin(), body.end(), bot.nickname.begin(), bot.nickname.end(), chieq) != body.end()) {
-        bot.talk();
+        vector<string> output;
+
+        do {
+          bot.talk(output);
+        } while (output.size() - 1 < HARD_MINIMUM_LENGTH);
+
+        cout << output[1];
+
+        for (unsigned int i = 2; i < output.size(); ++i) {
+          cout << " " << (output[i] == NICK ? bot.nickname : output[i]);
+        }
+
+        cout << endl;
       }
     }
   }
