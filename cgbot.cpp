@@ -1,13 +1,17 @@
 #include <iostream>
 #include <time.h>
 #include <string>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <vector>
 #include <sstream>
+#include <cstring>
 
 using namespace std;
+
+//************************************
+// Constants
 
 #define START "__START__"
 #define END "__END__"
@@ -16,14 +20,74 @@ using namespace std;
 #define MODE_IGNORE_END 1
 #define MODE_FORCE_END 2
 
-constexpr unsigned int MINIMUM_OCCURENCE = 2;
 constexpr unsigned int MARKOV_LENGTH = 2;
 constexpr unsigned int SOFT_MINIMUM_LENGTH = 5;
 constexpr unsigned int HARD_MINIMUM_LENGTH = 2;
-constexpr unsigned int SOFT_MAXIMUM_LENGTH = 20;
-constexpr unsigned int HARD_MAXIMUM_LENGTH = 30;
+constexpr unsigned int SOFT_MAXIMUM_LENGTH = 10;
+constexpr unsigned int HARD_MAXIMUM_LENGTH = 15;
+constexpr unsigned int SOFT_TRY = 10;
+constexpr unsigned int MINIMUM_OCCURENCES = 3;
+constexpr unsigned int MINIMUM_SCORE = 3;
+constexpr unsigned int REHASH_THRESOLD = 100000;
+
+typedef array<string, MARKOV_LENGTH> strings;
 
 auto chieq = [](char c1, char c2) { return toupper(c1) == toupper(c2); };
+
+//************************************
+// Declarations
+
+namespace std {
+  template<>
+  struct hash<strings> {
+    size_t operator()(const strings& v) const;
+  };
+}
+
+
+class Node {
+  public:
+    unsigned int occurences;
+    unsigned int total;
+    unsigned int end;
+    unordered_map<const strings*, unsigned int> nexts;
+
+    Node();
+
+    void increase(const strings& next);
+
+    template <int mode>
+    const strings* randomNext();
+};
+
+class Bot {
+  public:
+    string nickname;
+    bool enabled;
+    unsigned int startsTotal;
+
+    unordered_set<string> blacklist;
+    unordered_map<strings, Node> words;
+    unordered_set<pair<const strings, Node>*> starts;
+
+    Bot(string nickname);
+
+    void learn(string& message);
+    void talk(vector<string>& result);
+    void rehash();
+    vector<string> split(string& str);
+    const strings* randomStart();
+
+    template <bool start>
+    void add(strings& from, string& to);
+
+};
+
+//************************************
+// Globals
+
+//************************************
+// Definitions
 
 void clean(string& s) {
   static auto isnotspace = [](char c) { return !isspace(c); };
@@ -41,11 +105,13 @@ void clean(string& s) {
   s.erase(unique(s.begin(), s.end(), [](char a, char b) { return a == b && a == ' '; }), s.end());
 }
 
-inline void concat(vector<string>& dest, const vector<string>& src) {
+template <typename T>
+inline void concat(vector<string>& dest, const T& src) {
   dest.insert(dest.end(), src.begin(), src.end());
 }
 
-inline ostream& operator<<(ostream& os, const vector<string>& vec) {
+template <typename T>
+void print(ostream& os, const T& vec) {
   os << "<";
 
   bool empty = true;
@@ -61,263 +127,268 @@ inline ostream& operator<<(ostream& os, const vector<string>& vec) {
   }
 
   os << ">";
+}
 
+inline ostream& operator<<(ostream& os, const vector<string>& vec) {
+  print(os, vec);
   return os;
 }
 
-class Node;
-
-class Next {
-  public:
-    pair<const vector<string>, Node>* ptr;
-    mutable unsigned int score;
-
-    Next(pair<const vector<string>, Node>* ptr) : ptr(ptr), score(1) {}
-
-    bool operator==(const Next& other) const {
-      return ptr == other.ptr;
-    }
-
-};
-
-namespace std
-{
-  template<>
-  struct hash<Next>
-  {
-    size_t operator()(const Next& next) const;
-  };
-
-  template<>
-  struct hash<vector<string>>
-  {
-    size_t operator()(const vector<string>& vec) const
-    {
-      stringstream ss;
-
-      for (const string& str : vec) {
-        ss << str;
-      }
-
-      return hash<string>()(ss.str());
-    }
-  };
+inline ostream& operator<<(ostream& os, const strings& vec) {
+  print(os, vec);
+  return os;
 }
 
-class Node {
-  public:
-    unordered_set<Next> nexts;
-    unsigned int total;
+Node::Node() : occurences(0), total(0), end(0) {}
 
-    Node() : total(0) {}
+void Node::increase(const strings& next) {
+  nexts[&next] += 1;
+  total += 1;
 
-    void increase(pair<const vector<string>, Node>* target) {
-      for (const Next& next : nexts) {
-        if (next.ptr == target) {
-          next.score += 1;
-          total += 1;
-          return;
-        }
-      }
-
-      nexts.emplace(target);
-      total += 1;
-    }
-
-    template <int mode>
-    pair<const vector<string>, Node>* randomNext(pair<const vector<string>, Node>* end) {
-      if (mode == MODE_FORCE_END) {
-        for (const Next& next : nexts) {
-          if (next.ptr == end) {
-            return end;
-          }
-        }
-      }
-
-      unsigned int total = this->total;
-
-      if (mode == MODE_IGNORE_END) {
-        for (const Next& next : nexts) {
-          if (next.ptr == end) {
-            total -= next.score;
-          }
-        }
-      }
-
-      if (total <= 1) {
-        return end;
-      }
-
-      int r = rand() % total;
-
-      for (const Next& next : nexts) {
-        if (mode == MODE_IGNORE_END && next.ptr == end) {
-          continue;
-        }
-
-        r -= next.score;
-
-        if (r <= 0) {
-          return next.ptr;
-        }
-      }
-
-      return end;
-    }
-};
-
-namespace std
-{
-  size_t hash<Next>::operator()(const Next& next) const
-  {
-    return hash<Node*>()(&next.ptr->second);
+  if (next[MARKOV_LENGTH - 1] == END) {
+    end += 1;
   }
 }
 
-class Bot {
-  public:
-    string nickname;
-    unordered_set<string> blacklist;
-    bool enabled;
-    unordered_map<vector<string>, Node> data;
-    pair<const vector<string>, Node>* start;
-    pair<const vector<string>, Node>* end;
+template <int mode>
+const strings* Node::randomNext() {
+  unsigned int total;
 
-    Bot(string nickname) : nickname(nickname), blacklist({ nickname }), enabled(false) {
-      vector<string> vec = { START };
-      start = find(vec);
+  if (mode == MODE_FORCE_END && end > 0) {
+    total = end;
+  } else if (mode == MODE_IGNORE_END && end > 0) {
+    total = this->total - end;
+  } else {
+    total = this->total;
+  }
 
-      vec = { END };
-      end = find(vec);
+  int r = 1 + rand() % total;
+
+  for (auto& p : nexts) {
+    if (mode == MODE_FORCE_END && end > 0 && p.first->at(MARKOV_LENGTH - 1) != END) {
+      continue;
     }
 
-    void clean() {
-      bool found = false;
+    if (mode == MODE_IGNORE_END && end > 0 && p.first->at(MARKOV_LENGTH - 1) == END) {
+      continue;
+    }
 
-      do {
-        for (auto it = data.begin(); it != data.end();) {
-          if (it->second.total < MINIMUM_OCCURENCE) {
-            it = data.erase(it);
-          } else {
-            ++it;
+    r -= p.second;
+
+    if (r <= 0) {
+      return p.first;
+    }
+  }
+
+  cerr << "randomNext - Returning null: mode " << mode << " r " << r << " total " << total << " end " << end << " this->total " << this->total << endl;
+
+  return NULL;
+}
+
+Bot::Bot(string nickname) : nickname(nickname), enabled(false), startsTotal(0), blacklist({ nickname }) {
+
+}
+
+vector<string> Bot::split(string& str) {
+  vector<string> result;
+
+  istringstream iss(str);
+  for (string s; iss >> s;) {
+    if (s == START || s == END) {
+      continue;
+    }
+
+    if (equal(s.begin(), s.end(), nickname.begin(), nickname.end(), chieq)) {
+      s = NICK;
+    }
+
+    result.push_back(s);
+  }
+
+  return result;
+}
+
+void Bot::rehash() {
+  bool found;
+
+  cout << "### Before rehash: words.size() " << words.size() << " starts.size() " << starts.size() << " startsTotal " << startsTotal << endl;
+
+  do {
+    found = false;
+
+    unordered_set<const strings*> deleted;
+
+    for (auto& p : words) {
+      if (p.second.total <= 0 || p.second.occurences < MINIMUM_OCCURENCES) {
+        deleted.insert(&p.first);
+
+        if (p.first[0] == START) {
+          starts.erase(&p);
+        }
+      }
+    }
+
+    for (auto& p : words) {
+      for (auto it = p.second.nexts.begin(); it != p.second.nexts.end();) {
+        if (deleted.find(it->first) != deleted.end() || it->second < MINIMUM_SCORE) {
+          p.second.total -= it->second;
+
+          if (p.second.total <= 0) {
+            found = true;
           }
-        }
 
-        for (auto& pair : data) {
-          for (auto it = pair.second.nexts.begin(); it != pair.second.nexts.end();) {
-            if (data.find((*it).ptr->first) == data.end()) {
-              pair.second.total -= (*it).score;
-
-              if (pair.second.total < MINIMUM_OCCURENCE) {
-                found = true;
-              }
-
-              it = pair.second.nexts.erase(it);
-            } else {
-              ++it;
-            }
+          if (it->first->at(MARKOV_LENGTH - 1) == END) {
+            p.second.end -= it->second;
           }
-        }
-      } while (found);
 
-      data.rehash(0);
-    }
+          p.second.occurences -= 1;
 
-    inline pair<const vector<string>, Node>* find(vector<string>& key) {
-      data[key];
-      return &(*data.find(key));
-    }
+          if (p.second.occurences < MINIMUM_OCCURENCES) {
+            found = true;
+          }
 
-    vector<string> split(string& str) {
-      vector<string> result;
-
-      istringstream iss(str);
-      for (string s; iss >> s;) {
-        if (s == START || s == END) {
-          continue;
-        }
-
-        if (equal(s.begin(), s.end(), nickname.begin(), nickname.end(), chieq)) {
-          s = NICK;
-        }
-
-        result.push_back(s);
-      }
-
-      return result;
-    }
-
-    inline void learn(Node& from, vector<string>& to) {
-      from.increase(find(to));
-    }
-
-    inline void learn(vector<string>& from, string& to) {
-      vector<string> vec({ to });
-      find(from)->second.increase(find(vec));
-    }
-
-    inline void learn(vector<string>& from, pair<const vector<string>, Node>* to) {
-      find(from)->second.increase(to);
-    }
-
-    void learn(string& body) {
-      vector<string> words = split(body);
-
-      if (words.size() < MARKOV_LENGTH) {
-        return;
-      }
-
-      vector<string> history;
-      auto itr = words.begin();
-
-      for (unsigned int i = 0; i < MARKOV_LENGTH - 1; ++i) {
-        history.push_back(*itr++);
-      }
-
-      learn(start->second, history);
-
-      history.insert(history.begin(), START);
-
-      for (unsigned int i = MARKOV_LENGTH - 1; i < words.size(); ++i) {
-        learn(history, *itr);
-        history.erase(history.begin());
-        history.push_back(*itr);
-        ++itr;
-      }
-
-      learn(history, end);
-    }
-
-    void talk(vector<string>& result) {
-      result = { START };
-
-      pair<const vector<string>, Node>* next = start->second.randomNext<MODE_IGNORE_END>(end);
-
-      concat(result, next->first);
-
-      while (result.size() < HARD_MAXIMUM_LENGTH) {
-        vector<string> last(result.end() - MARKOV_LENGTH, result.end());
-
-        auto itr = data.find(last);
-
-        if (itr == data.end()) {
-          break;
-        }
-
-        if (result.size() < SOFT_MAXIMUM_LENGTH) {
-          next = (*itr).second.randomNext<MODE_NONE>(end);
+          it = p.second.nexts.erase(it);
         } else {
-          next = (*itr).second.randomNext<MODE_FORCE_END>(end);
+          ++it;
         }
-
-        if (next == end) {
-          break;
-        }
-
-        concat(result, next->first);
       }
     }
-};
+
+    for (auto it = words.begin(); it != words.end();) {
+      if (deleted.find(&it->first) != deleted.end()) {
+        it = words.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  } while (found);
+
+  words.rehash(0);
+
+  startsTotal = 0;
+
+  for (auto& v : starts) {
+    startsTotal += v->second.total;
+  }
+
+  cout << "### After rehash: words.size() " << words.size() << " starts.size() " << starts.size() << " startsTotal " << startsTotal << endl;
+}
+
+template <bool start>
+void Bot::add(strings& from, string& to) {
+  strings dest;
+
+  for (unsigned int i = 0; i < MARKOV_LENGTH - 1; ++i) {
+    dest[i] = from[i + 1];
+  }
+
+  dest[MARKOV_LENGTH - 1] = to;
+
+  words[dest].occurences += 1;
+
+  words[from].increase(words.find(dest)->first);
+
+  if (start) {
+    words[from].occurences += 1;
+    startsTotal += 1;
+    starts.insert(&*words.find(from));
+  }
+}
+
+void Bot::learn(string& message) {
+  static string end(END);
+
+  vector<string> words = split(message);
+
+  if (words.size() < MARKOV_LENGTH) {
+    return;
+  }
+
+  strings history;
+  history[0] = START;
+
+  for (unsigned int i = 0; i < MARKOV_LENGTH - 1; ++i) {
+    history[i + 1] = words[i];
+  }
+
+  for (unsigned int i = MARKOV_LENGTH - 1; i < words.size(); ++i) {
+    if (i == MARKOV_LENGTH - 1) {
+      add<true>(history, words[i]);
+    } else {
+      add<false>(history, words[i]);
+    }
+
+    for (unsigned int j = 0; j < MARKOV_LENGTH - 1; ++j) {
+      history[j] = history[j + 1];
+    }
+
+    history[MARKOV_LENGTH - 1] = words[i];
+  }
+
+  add<false>(history, end);
+
+  if (enabled && words.size() > REHASH_THRESOLD) {
+    rehash();
+  }
+}
+
+const strings* Bot::randomStart() {
+  int r = 1 + rand() % startsTotal;
+
+  for (const pair<const strings, Node>* p : starts) {
+    r -= p->second.total;
+
+    if (r <= 0) {
+      return &p->first;
+    }
+  }
+
+  cerr << "randomStart - Returning null: startsTotal " << startsTotal << " r " << r << endl;
+
+  return NULL;
+}
+
+void Bot::talk(vector<string>& result) {
+  result.clear();
+
+  const strings* history = randomStart();
+  concat(result, *history);
+
+  while (result.size() < HARD_MAXIMUM_LENGTH + 1) {
+    Node& node = words[*history];
+
+    if (result.size() < HARD_MINIMUM_LENGTH + 1) {
+      history = node.randomNext<MODE_IGNORE_END>();
+    } else if (result.size() > SOFT_MAXIMUM_LENGTH + 1) {
+      history = node.randomNext<MODE_FORCE_END>();
+    } else {
+      history = node.randomNext<MODE_NONE>();
+    }
+
+    const string& last = history->at(MARKOV_LENGTH - 1);
+
+    if (last == END) {
+      break;
+    }
+
+    result.push_back(last);
+  }
+}
+
+namespace std {
+  size_t hash<strings>::operator()(const strings& v) const {
+    stringstream ss;
+
+    for (const string& str : v) {
+      ss << str;
+    }
+
+    return hash<string>()(ss.str());
+  }
+}
+
+//************************************
+// Main
 
 int main(int argc ,char **argv) {
   if (argc < 2) {
@@ -345,11 +416,10 @@ int main(int argc ,char **argv) {
 
     if (username == "###") {
       if (body == "ENABLE") {
+        bot.rehash();
         bot.enabled = true;
       } else if (body == "DISABLE") {
         bot.enabled = false;
-      } else if (body == "CLEAN") {
-        bot.clean();
       } else if (body == "STOP") {
         break;
       }
@@ -359,9 +429,12 @@ int main(int argc ,char **argv) {
       if (bot.enabled && search(body.begin(), body.end(), bot.nickname.begin(), bot.nickname.end(), chieq) != body.end()) {
         vector<string> output;
 
+        unsigned int counter = 0;
+
         do {
           bot.talk(output);
-        } while (output.size() - 1 < HARD_MINIMUM_LENGTH);
+          counter += 1;
+        } while (output.size() - 1 < (counter < SOFT_TRY ? SOFT_MINIMUM_LENGTH : HARD_MINIMUM_LENGTH));
 
         cout << output[1];
 
