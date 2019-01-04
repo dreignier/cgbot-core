@@ -26,9 +26,12 @@ constexpr unsigned int HARD_MINIMUM_LENGTH = 2;
 constexpr unsigned int SOFT_MAXIMUM_LENGTH = 10;
 constexpr unsigned int HARD_MAXIMUM_LENGTH = 15;
 constexpr unsigned int SOFT_TRY = 10;
+
+// Memory usage
 constexpr unsigned int MINIMUM_OCCURENCES = 3;
 constexpr unsigned int MINIMUM_SCORE = 3;
 constexpr unsigned int REHASH_THRESOLD = 100000;
+constexpr bool CASE_INSENSITIVE = true;
 
 typedef array<string, MARKOV_LENGTH> strings;
 
@@ -43,7 +46,6 @@ namespace std {
     size_t operator()(const strings& v) const;
   };
 }
-
 
 class Node {
   public:
@@ -194,7 +196,7 @@ vector<string> Bot::split(string& str) {
 
   istringstream iss(str);
   for (string s; iss >> s;) {
-    if (s == START || s == END) {
+    if (s == START || s == END || s == NICK) {
       continue;
     }
 
@@ -219,7 +221,7 @@ void Bot::rehash() {
     unordered_set<const strings*> deleted;
 
     for (auto& p : words) {
-      if (p.second.total <= 0 || p.second.occurences < MINIMUM_OCCURENCES) {
+      if ((p.first[MARKOV_LENGTH - 1] != END && p.second.total <= 0) || p.second.occurences < MINIMUM_OCCURENCES) {
         deleted.insert(&p.first);
 
         if (p.first[0] == START) {
@@ -229,6 +231,10 @@ void Bot::rehash() {
     }
 
     for (auto& p : words) {
+      if (deleted.find(&p.first) != deleted.end()) {
+        continue;
+      }
+
       for (auto it = p.second.nexts.begin(); it != p.second.nexts.end();) {
         if (deleted.find(it->first) != deleted.end() || it->second < MINIMUM_SCORE) {
           p.second.total -= it->second;
@@ -372,6 +378,10 @@ void Bot::talk(vector<string>& result) {
     }
 
     result.push_back(last);
+
+    if (result.size() == HARD_MAXIMUM_LENGTH + 1) {
+      result.push_back("...");
+    }
   }
 }
 
@@ -410,9 +420,22 @@ int main(int argc ,char **argv) {
     string body;
 
     cin >> username;
+
+    if (username.length() == 10 && username[0] == '(' && username[9] == ')') {
+      cin >> username;
+
+      string useless;
+      cin >> useless;
+    }
+
     getline(cin, body);
 
     clean(body);
+
+    if (username.length() == 0 && body.length() == 0) {
+      cin.ignore();
+      continue;
+    }
 
     if (username == "###") {
       if (body == "ENABLE") {
@@ -424,6 +447,10 @@ int main(int argc ,char **argv) {
         break;
       }
     } else if (bot.blacklist.find(username) == bot.blacklist.end()) {
+      if (CASE_INSENSITIVE) {
+        transform(body.begin(), body.end(), body.begin(), ::tolower);
+      }
+
       bot.learn(body);
 
       if (bot.enabled && search(body.begin(), body.end(), bot.nickname.begin(), bot.nickname.end(), chieq) != body.end()) {
