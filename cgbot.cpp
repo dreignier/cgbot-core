@@ -463,10 +463,10 @@ int main(int argc ,char **argv) {
           counter += 1;
         } while (output.size() - 1 < (counter < SOFT_TRY ? SOFT_MINIMUM_LENGTH : HARD_MINIMUM_LENGTH));
 
-        cout << output[1];
+        cout << (output[1] == NICK ? username : output[1]);
 
         for (unsigned int i = 2; i < output.size(); ++i) {
-          cout << " " << (output[i] == NICK ? bot.nickname : output[i]);
+          cout << " " << (output[i] == NICK ? username : output[i]);
         }
 
         cout << endl;
