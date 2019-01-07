@@ -20,11 +20,11 @@ using namespace std;
 #define MODE_IGNORE_END 1
 #define MODE_FORCE_END 2
 
-constexpr unsigned int MARKOV_LENGTH = 2;
+constexpr unsigned int MARKOV_LENGTH = 3;
 constexpr unsigned int SOFT_MINIMUM_LENGTH = 5;
 constexpr unsigned int HARD_MINIMUM_LENGTH = 2;
-constexpr unsigned int SOFT_MAXIMUM_LENGTH = 10;
-constexpr unsigned int HARD_MAXIMUM_LENGTH = 15;
+constexpr unsigned int SOFT_MAXIMUM_LENGTH = 15;
+constexpr unsigned int HARD_MAXIMUM_LENGTH = 20;
 constexpr unsigned int SOFT_TRY = 10;
 
 // Memory usage
@@ -306,7 +306,7 @@ void Bot::learn(string& message) {
 
   vector<string> words = split(message);
 
-  if (words.size() < MARKOV_LENGTH) {
+  if (words.size() <= 0 || words.size() < MARKOV_LENGTH - 1) {
     return;
   }
 
