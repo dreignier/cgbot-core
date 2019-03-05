@@ -467,10 +467,12 @@ int main(int argc ,char **argv) {
           counter += 1;
         } while (output.size() - 1 < (counter < SOFT_TRY ? SOFT_MINIMUM_LENGTH : HARD_MINIMUM_LENGTH));
 
-        cout << (equali(output[1], NICK) ? username : output[1]);
+        for (unsigned int i = 1; i < output.size(); ++i) {
+          if (i != 1) {
+            cout << " ";
+          }
 
-        for (unsigned int i = 2; i < output.size(); ++i) {
-          cout << " " << (output[i] == NICK ? username : output[i]);
+          cout << (equali(output[i], NICK) ? username : output[i]);
         }
 
         cout << endl;
