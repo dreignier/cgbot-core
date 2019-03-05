@@ -91,6 +91,10 @@ class Bot {
 //************************************
 // Definitions
 
+inline bool equali(string a, string b) {
+  return equal(a.begin(), a.end(), b.begin(), b.end(), chieq);
+}
+
 void clean(string& s) {
   static auto isnotspace = [](char c) { return !isspace(c); };
 
@@ -200,7 +204,7 @@ vector<string> Bot::split(string& str) {
       continue;
     }
 
-    if (equal(s.begin(), s.end(), nickname.begin(), nickname.end(), chieq)) {
+    if (equali(s, nickname)) {
       s = NICK;
     }
 
@@ -463,7 +467,7 @@ int main(int argc ,char **argv) {
           counter += 1;
         } while (output.size() - 1 < (counter < SOFT_TRY ? SOFT_MINIMUM_LENGTH : HARD_MINIMUM_LENGTH));
 
-        cout << (output[1] == NICK ? username : output[1]);
+        cout << (equali(output[1], NICK) ? username : output[1]);
 
         for (unsigned int i = 2; i < output.size(); ++i) {
           cout << " " << (output[i] == NICK ? username : output[i]);
