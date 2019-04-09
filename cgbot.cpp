@@ -394,7 +394,7 @@ namespace std {
     stringstream ss;
 
     for (const string& str : v) {
-      ss << str;
+      ss << "_" << str;
     }
 
     return hash<string>()(ss.str());
