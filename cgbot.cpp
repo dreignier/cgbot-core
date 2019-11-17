@@ -105,7 +105,7 @@ void clean(string& s) {
   s.erase(find_if(s.rbegin(), s.rend(), isnotspace).base(), s.end());
 
   // Clean bad caracters
-  remove_if(s.begin(), s.end(), [](char c) { return c == '\n' || c == '\t' || c == '\r'; });
+  s.erase(remove_if(s.begin(), s.end(), [](char c) { return c == '\n' || c == '\t' || c == '\r'; }), s.end);
 
   // Clean double spaces
   s.erase(unique(s.begin(), s.end(), [](char a, char b) { return a == b && a == ' '; }), s.end());
